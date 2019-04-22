@@ -88,7 +88,7 @@ class CocoMetadata:
             ys = kp[1::3]
             vs = kp[2::3]
 
-            joint_list.append([(x, y) if v >= 1 else (-1000, -1000) for x, y, v in zip(xs, ys, vs)])
+            joint_list.append([(x, y, v) if v >= 1 else (-10000, -10000) for x, y, v in zip(xs, ys, vs)])
 
         self.joint_list = []
         transform = list(zip(
@@ -102,9 +102,9 @@ class CocoMetadata:
                 j2 = prev_joint[idx2 - 1]
 
                 if j1[0] <= 0 or j1[1] <= 0 or j2[0] <= 0 or j2[1] <= 0:
-                    new_joint.append((-1000, -1000))
+                    new_joint.append((-1000, -1000, 0))
                 else:
-                    new_joint.append(((j1[0] + j2[0]) / 2, (j1[1] + j2[1]) / 2))
+                    new_joint.append(((j1[0] + j2[0]) / 2, (j1[1] + j2[1]) / 2, (j1[2] + j2[2]) / 2))
             # background
             # new_joint.append((-1000, -1000))
             self.joint_list.append(new_joint)
@@ -130,7 +130,7 @@ class CocoMetadata:
 
     @staticmethod
     def put_heatmap(heatmap, plane_idx, center, sigma):
-        center_x, center_y = center
+        center_x, center_y, _ = center
         _, height, width = heatmap.shape[:3]
 
         th = 1.6052

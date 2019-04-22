@@ -16,7 +16,7 @@
 import tensorflow as tf
 
 from dataset_augment import pose_random_scale, pose_rotation, pose_flip, pose_resize_shortestedge_random, \
-    pose_crop_random, pose_to_img
+    pose_crop_random, pose_to_img, pose_crop_portrait
 from dataset_prepare import CocoMetadata
 from os.path import join
 from pycocotools.coco import COCO
@@ -66,6 +66,7 @@ def _parse_function(imgId, is_train, ann=None):
     img_path = join(BASE, img_meta['file_name'])
 
     img_meta_data = CocoMetadata(idx, img_path, img_meta, img_anno, sigma=6.0)
+    img_meta_data = pose_crop_portrait(img_meta_data)
     img_meta_data = pose_random_scale(img_meta_data)
     img_meta_data = pose_rotation(img_meta_data)
     img_meta_data = pose_flip(img_meta_data)

@@ -49,6 +49,36 @@ def get_network_output_wh():
     return _network_w // _scale, _network_h // _scale
 
 
+def pose_crop_portrait(meta):
+    r = random.uniform(0, 1.0)
+    if r > 0.5:
+        return meta
+    # crop top
+    h = meta.height
+    for joint in meta.joint_list:
+        Top = joint[CocoPart.Top.value]
+        LWrist = joint[CocoPart.LWrist.value]
+        RWrist = joint[CocoPart.RWrist.value]
+        min_y = min(LWrist[1] if LWrist[2]>0 else h, RWrist[1] if RWrist[2]>0 else h)
+        min_y = min(min_y, Top[1] if Top[2]>0 else h)
+        max_y = max(0, min(min_y, h-_network_h))
+    crop_top = random.randint(0, max_y)
+    # crop bottom
+    min_y = meta.height
+    max_y = 0
+    for joint in meta.joint_list:
+        LHip = joint[CocoPart.LHip.value]
+        RHip = joint[CocoPart.RHip.value]
+        LWrist = joint[CocoPart.LWrist.value]
+        RWrist = joint[CocoPart.RWrist.value]
+        min_y = min(LHip[1] if LHip[2]>0 else min_y, RHip[1] if RHip[2]>0 else min_y)
+        max_y = max(LWrist[1] if LWrist[2]>0 else max_y, RWrist[1] if RWrist[2]>0 else max_y)
+        break
+    if min_y < _network_h + crop_top:
+        min_y = min(_network_h + crop_top, meta.height)
+    crop_bottom = random.randint(int(max(min_y, max_y)), meta.height)
+    return pose_crop(meta, 0, crop_top, meta.width, crop_bottom - crop_top)
+
 def pose_random_scale(meta):
     scalew = random.uniform(0.8, 1.2)
     scaleh = random.uniform(0.8, 1.2)
@@ -62,10 +92,10 @@ def pose_random_scale(meta):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            if point[0] < -100 or point[1] < -100:
-                adjust_joint.append((-1000, -1000))
-                continue
-            adjust_joint.append((int(point[0] * scalew + 0.5), int(point[1] * scaleh + 0.5)))
+            #if point[0] < -1000 or point[1] < -1000:
+            #    adjust_joint.append((-10000, -10000))
+            #    continue
+            adjust_joint.append((int(point[0] * scalew + 0.5), int(point[1] * scaleh + 0.5), point[2]))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -96,14 +126,11 @@ def pose_rotation(meta):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            if point[0] < -100 or point[1] < -100:
-                adjust_joint.append((-1000, -1000))
+            if point[0] < -1000 or point[1] < -1000:
+                adjust_joint.append((-10000, -10000, 0))
                 continue
-            # if point[0] <= 0 or point[1] <= 0:
-            #     adjust_joint.append((-1, -1))
-            #     continue
-            x, y = _rotate_coord((meta.width, meta.height), (newx, newy), point, deg)
-            adjust_joint.append((x, y))
+            x, y = _rotate_coord((meta.width, meta.height), (newx, newy), point[:2], deg)
+            adjust_joint.append((x, y, point[2]))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -131,13 +158,13 @@ def pose_flip(meta):
         adjust_joint = []
         for cocopart in flip_list:
             point = joint[cocopart.value]
-            if point[0] < -100 or point[1] < -100:
-                adjust_joint.append((-1000, -1000))
+            if point[0] < -1000 or point[1] < -1000:
+                adjust_joint.append((-10000, -10000, 0))
                 continue
             # if point[0] <= 0 or point[1] <= 0:
             #     adjust_joint.append((-1, -1))
             #     continue
-            adjust_joint.append((meta.width - point[0], point[1]))
+            adjust_joint.append((meta.width - point[0], point[1], point[2]))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -151,7 +178,7 @@ def pose_resize_shortestedge_random(meta):
     ratio_h = _network_h / meta.height
     ratio = min(ratio_w, ratio_h)
     target_size = int(min(meta.width * ratio + 0.5, meta.height * ratio + 0.5))
-    target_size = int(target_size * random.uniform(0.95, 1.2))
+    target_size = int(target_size * random.uniform(0.8, 1.2)) # 0.95 -> 0.8
     # target_size = int(min(_network_w, _network_h) * random.uniform(0.7, 1.5))
     return pose_resize_shortestedge(meta, target_size)
 
@@ -205,13 +232,13 @@ def pose_resize_shortestedge(meta, target_size):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            if point[0] < -100 or point[1] < -100:
-                adjust_joint.append((-1000, -1000))
+            if point[0] < -1000 or point[1] < -1000:
+                adjust_joint.append((-10000, -10000, 0))
                 continue
             # if point[0] <= 0 or point[1] <= 0 or int(point[0]*scale+0.5) > neww or int(point[1]*scale+0.5) > newh:
             #     adjust_joint.append((-1, -1))
             #     continue
-            adjust_joint.append((int(point[0] * scale + 0.5) + pw, int(point[1] * scale + 0.5) + ph))
+            adjust_joint.append((int(point[0] * scale + 0.5) + pw, int(point[1] * scale + 0.5) + ph, point[2]))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -232,17 +259,11 @@ def pose_crop(meta, x, y, w, h):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            if point[0] < -100 or point[1] < -100:
-                adjust_joint.append((-1000, -1000))
-                continue
-            # if point[0] <= 0 or point[1] <= 0:
-            #     adjust_joint.append((-1000, -1000))
-            #     continue
-            new_x, new_y = point[0] - x, point[1] - y
-            # if new_x <= 0 or new_y <= 0 or new_x > target_size[0] or new_y > target_size[1]:
-            #     adjust_joint.append((-1, -1))
-            #     continue
-            adjust_joint.append((new_x, new_y))
+            #if point[0] < -1000 or point[1] < -1000:
+            #    adjust_joint.append((-10000, -10000))
+            #    continue
+            new_x, new_y, new_v = point[0] - x, point[1] - y, point[2]
+            adjust_joint.append((new_x, new_y, new_v))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -254,21 +275,23 @@ def pose_crop(meta, x, y, w, h):
 def pose_crop_random(meta):
     global _network_w, _network_h
     target_size = (_network_w, _network_h)
-    for _ in range(50):
-        x = random.randrange(0, meta.width - target_size[0]) if meta.width > target_size[0] else 0
-        y = random.randrange(0, meta.height - target_size[1]) if meta.height > target_size[1] else 0
-
-        # check whether any face is inside the box to generate a reasonably-balanced datasets
-        for joint in meta.joint_list:
-            if x <= joint[CocoPart.RKnee.value][0] < x + target_size[0] and \
-                    y <= joint[CocoPart.RKnee.value][1] < y + target_size[1] and \
-                    x <= joint[CocoPart.RAnkle.value][0] < x + target_size[0] and \
-                    y <= joint[CocoPart.RAnkle.value][1] < y + target_size[1] and \
-                    x <= joint[CocoPart.LKnee.value][0] < x + target_size[0] and \
-                    y <= joint[CocoPart.LKnee.value][1] < y + target_size[1] and \
-                    x <= joint[CocoPart.LAnkle.value][0] < x + target_size[0] and \
-                    y <= joint[CocoPart.LAnkle.value][1] < y + target_size[1]:
-                break
+    x = random.randrange(0, meta.width - target_size[0]) if meta.width > target_size[0] else 0
+    y = random.randrange(0, meta.height - target_size[1]) if meta.height > target_size[1] else 0
+    #for _ in range(50):
+    #    x = random.randrange(0, meta.width - target_size[0]) if meta.width > target_size[0] else 0
+    #    y = random.randrange(0, meta.height - target_size[1]) if meta.height > target_size[1] else 0
+    #
+    #    # check whether any face is inside the box to generate a reasonably-balanced datasets
+    #    for joint in meta.joint_list:
+    #        if      x <= joint[CocoPart.RKnee.value][0] < x + target_size[0] and \
+    #                y <= joint[CocoPart.RKnee.value][1] < y + target_size[1] and \
+    #                x <= joint[CocoPart.RAnkle.value][0] < x + target_size[0] and \
+    #                y <= joint[CocoPart.RAnkle.value][1] < y + target_size[1] and \
+    #                x <= joint[CocoPart.LKnee.value][0] < x + target_size[0] and \
+    #                y <= joint[CocoPart.LKnee.value][1] < y + target_size[1] and \
+    #                x <= joint[CocoPart.LAnkle.value][0] < x + target_size[0] and \
+    #                y <= joint[CocoPart.LAnkle.value][1] < y + target_size[1]:
+    #            break
     return pose_crop(meta, x, y, target_size[0], target_size[1])
 
 
