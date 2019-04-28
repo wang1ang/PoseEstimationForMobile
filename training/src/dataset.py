@@ -88,7 +88,7 @@ def _get_dataset_pipeline(anno, batch_size, epoch, buffer_size, is_train=True):
 
     dataset = tf.data.Dataset.from_tensor_slices(imgIds)
 
-    dataset.shuffle(buffer_size)
+    dataset = dataset.shuffle(buffer_size)
     dataset = dataset.map(
         lambda imgId: tuple(
             tf.py_func(
