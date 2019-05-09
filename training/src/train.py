@@ -46,7 +46,7 @@ def get_loss_and_output(model, batchsize, input_image, input_heat, reuse_variabl
         loss_l2 = tf.nn.l2_loss(tf.concat(pred_heat, axis=0) - input_heat, name='loss_heatmap_stage%d' % idx)
         losses.append(loss_l2)
 
-    total_loss = tf.reduce_sum(losses) / batchsize
+    total_loss = tf.reduce_sum(losses) / batchsize + tf.add_n(tf.losses.get_regularization_losses())
     total_loss_ll_heat = tf.reduce_sum(loss_l2) / batchsize
     return total_loss, total_loss_ll_heat, pred_heat
 
