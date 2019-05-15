@@ -12,4 +12,6 @@ def get_network(type, input, trainable=True):
         net, loss = network_mv2_cpm.build_network(input, trainable)
     elif type == "mv2_hourglass":
         net, loss = network_mv2_hourglass.build_network(input, trainable)        
+    elif type == "hand":
+        net, loss = network_mv2_cpm.build_network(input, trainable, n_points=21*2)
     return net, loss
