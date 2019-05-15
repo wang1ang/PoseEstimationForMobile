@@ -88,7 +88,7 @@ class CocoMetadata:
             ys = kp[1::3]
             vs = kp[2::3]
 
-            joint_list.append([(x, y, v) if v >= 1 else (-10000, -10000) for x, y, v in zip(xs, ys, vs)])
+            joint_list.append([(x, y, v) if v >= 1 else (-10000, -10000, 0) for x, y, v in zip(xs, ys, vs)])
 
         self.joint_list = []
         transform = list(zip(
@@ -114,7 +114,7 @@ class CocoMetadata:
 
         for joints in self.joint_list:
             for idx, point in enumerate(joints):
-                if point[0] < 0 or point[1] < 0:
+                if point[0] < 0 or point[1] < 0 or point[2] == 0:
                     continue
                 CocoMetadata.put_heatmap(heatmap, idx, point, self.sigma)
 

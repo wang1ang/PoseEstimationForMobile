@@ -92,10 +92,7 @@ def pose_random_scale(meta):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            #if point[0] < -1000 or point[1] < -1000:
-            #    adjust_joint.append((-10000, -10000))
-            #    continue
-            adjust_joint.append((int(point[0] * scalew + 0.5), int(point[1] * scaleh + 0.5), point[2]))
+            adjust_joint.append((point[0] * (neww/float(meta.width)), point[1] * (newh/float(meta.height)), point[2]))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -103,6 +100,44 @@ def pose_random_scale(meta):
     meta.img = dst
     return meta
 
+def hand_rotation(meta):
+    deg = random.uniform(-15.0, 15.0)
+    img = meta.img
+    (h, w) = img.shape[:2]
+    center = (w * 0.5, h * 0.5)  # x, y
+    rot_m = cv2.getRotationMatrix2D((center[0], center[1]), deg, 1)
+    cos = np.abs(rot_m[0,0])
+    sin = np.abs(rot_m[0,1])
+    neww = int((h*sin) + (w*cos) + 0.5)
+    newh = int((h*cos) + (w*sin) + 0.5)
+    rot_m[0,2] += (neww/2) - center[0]
+    rot_m[1,2] += (newh/2) - center[1]
+    ret = cv2.warpAffine(img, rot_m, (neww, newh), flags=cv2.INTER_AREA, borderMode=cv2.BORDER_CONSTANT)
+    if img.ndim == 3 and ret.ndim == 2:
+        ret = ret[:, :, np.newaxis]
+    newx, newy = 0, 0
+    img = ret
+
+    # adjust meta data
+    adjust_joint_list = []
+    for joint in meta.joint_list:
+        adjust_joint = []
+        for point in joint:
+            if point[0] < -1000 or point[1] < -1000 or point[2] == 0:
+                adjust_joint.append((-10000, -10000, 0))
+                continue
+            #x, y = _rotate_coord((meta.width, meta.height), (newx, newy), point[:2], deg)
+            x, y = point[:2]
+            xx = rot_m[0,0] * x + rot_m[0,1] * y + rot_m[0,2]
+            yy = rot_m[1,0] * x + rot_m[1,1] * y + rot_m[1,2]
+            adjust_joint.append((xx, yy, point[2]))
+        adjust_joint_list.append(adjust_joint)
+
+    meta.joint_list = adjust_joint_list
+    meta.width, meta.height = img.shape[1], img.shape[0]
+    meta.img = img
+
+    return meta
 
 def pose_rotation(meta):
     deg = random.uniform(-15.0, 15.0)
@@ -126,7 +161,7 @@ def pose_rotation(meta):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            if point[0] < -1000 or point[1] < -1000:
+            if point[0] < -1000 or point[1] < -1000 or point[2] == 0:
                 adjust_joint.append((-10000, -10000, 0))
                 continue
             x, y = _rotate_coord((meta.width, meta.height), (newx, newy), point[:2], deg)
@@ -158,13 +193,13 @@ def pose_flip(meta):
         adjust_joint = []
         for cocopart in flip_list:
             point = joint[cocopart.value]
-            if point[0] < -1000 or point[1] < -1000:
+            if point[0] < -1000 or point[1] < -1000 or point[2] == 0:
                 adjust_joint.append((-10000, -10000, 0))
                 continue
             # if point[0] <= 0 or point[1] <= 0:
             #     adjust_joint.append((-1, -1))
             #     continue
-            adjust_joint.append((meta.width - point[0], point[1], point[2]))
+            adjust_joint.append((meta.width - 1 - point[0], point[1], point[2]))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -200,13 +235,14 @@ def _rotate_coord(shape, newxy, point, angle):
     qx += ox - new_x
     qy += oy - new_y
 
-    return int(qx + 0.5), int(qy + 0.5)
+    return qx, qy
 
 
 def pose_resize_shortestedge(meta, target_size):
     global _network_w, _network_h
     img = meta.img
-
+    if not target_size:
+        target_size = min(_network_h, _network_w)
     # adjust image
     scale = target_size / min(meta.height, meta.width)
     if meta.height < meta.width:
@@ -232,13 +268,13 @@ def pose_resize_shortestedge(meta, target_size):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            if point[0] < -1000 or point[1] < -1000:
+            if point[0] < -1000 or point[1] < -1000 or point[2] == 0:
                 adjust_joint.append((-10000, -10000, 0))
                 continue
             # if point[0] <= 0 or point[1] <= 0 or int(point[0]*scale+0.5) > neww or int(point[1]*scale+0.5) > newh:
             #     adjust_joint.append((-1, -1))
             #     continue
-            adjust_joint.append((int(point[0] * scale + 0.5) + pw, int(point[1] * scale + 0.5) + ph, point[2]))
+            adjust_joint.append((point[0] * (neww/float(meta.width)) + pw, point[1] * (newh/float(meta.height)) + ph, point[2]))
         adjust_joint_list.append(adjust_joint)
 
     meta.joint_list = adjust_joint_list
@@ -259,9 +295,6 @@ def pose_crop(meta, x, y, w, h):
     for joint in meta.joint_list:
         adjust_joint = []
         for point in joint:
-            #if point[0] < -1000 or point[1] < -1000:
-            #    adjust_joint.append((-10000, -10000))
-            #    continue
             new_x, new_y, new_v = point[0] - x, point[1] - y, point[2]
             adjust_joint.append((new_x, new_y, new_v))
         adjust_joint_list.append(adjust_joint)
@@ -274,6 +307,8 @@ def pose_crop(meta, x, y, w, h):
 
 def pose_crop_random(meta):
     global _network_w, _network_h
+    if (meta.width == _network_w and meta.height == _network_h):
+        return meta
     target_size = (_network_w, _network_h)
     x = random.randrange(0, meta.width - target_size[0]) if meta.width > target_size[0] else 0
     y = random.randrange(0, meta.height - target_size[1]) if meta.height > target_size[1] else 0
@@ -299,3 +334,90 @@ def pose_to_img(meta_l):
     global _network_w, _network_h, _scale
     return meta_l.img.astype(np.float32), \
            meta_l.get_heatmap(target_size=(_network_w // _scale, _network_h // _scale)).astype(np.float32)
+
+
+def hand_flip(meta):
+    r = random.uniform(0, 1.0)
+    if r > 0.5:
+        return meta
+
+    img = meta.img
+    img = cv2.flip(img, 1)
+
+    # flip meta
+    adjust_joint_list = []
+    for joint in meta.joint_list:
+        adjust_joint = []
+        for point in joint:
+            if point[0] < -1000 or point[1] < -1000 or point[2] == 0:
+                adjust_joint.append((-10000, -10000, 0))
+                continue
+            adjust_joint.append((meta.width - 1 - point[0], point[1], point[2]))
+        adjust_joint_list.append(adjust_joint)
+
+    meta.joint_list = adjust_joint_list
+    meta.img = img
+    meta.is_left = 1 - meta.is_left # exchange left and right
+    return meta
+
+def hand_crop(meta):
+    left = meta.width - 1
+    right = 0
+    top = meta.height - 1
+    bottom = 0
+    for joint in meta.joint_list:
+        for point in joint:
+            if point[0] < -1000 or point[1] < -1000 or point[2] == 0:
+                continue
+            left = min(left, point[0])
+            right = max(right, point[0])
+            top = min(top, point[1])
+            bottom = max(bottom, point[1])
+    width = right - left + 1
+    height = bottom - top + 1
+    
+    # expand half
+    left -= max((height - width)/2, width / 2)
+    right += max((height - width)/2, width / 2)
+    top -= max((width - height)/2, height / 2)
+    bottom += max((width - height)/2, height / 2)
+
+    # expand randomly
+    max_expand = max(width, height) * 2.5
+    left  -= min(max_expand, abs(np.random.normal(0, width / 2)))
+    right += min(max_expand, abs(np.random.normal(0, width / 2)))
+    top   -= min(max_expand, abs(np.random.normal(0, height / 2)))
+    bottom+= min(max_expand, abs(np.random.normal(0, height / 2)))
+
+    # legal int
+    left = int(max(0, round(left)))
+    right = int(min(meta.width - 1, round(right)))
+    top = int(max(0, round(top)))
+    bottom = int(min(meta.height - 1, round(bottom)))
+
+    # expand to necessary pixels
+    min_pixels = min(64, meta.width, meta.height)
+    to_expand = max(bottom - top + 1, min_pixels, meta.width)
+    if right - left + 1 < to_expand:
+        pad = (to_expand-1 - (right - left)) // 2
+        left = max(0, left - pad)
+        pad = to_expand-1 - (right - left)
+        right = min(meta.width - 1, right + pad)
+        pad = to_expand-1 - (right - left)
+        left = max(0, left - pad)
+    to_expand = max(right - left + 1, min_pixels)
+    if bottom - top + 1 < to_expand:
+        pad = (to_expand-1 - (bottom - top)) // 2
+        top = max(0, top - pad)
+        pad = to_expand-1 - (bottom - top)
+        bottom = min(meta.height - 1, bottom + pad)
+        pad = to_expand-1 - (bottom - top)
+        top = max(0, top - pad)
+        
+    return pose_crop(meta, int(left), int(top), int(right - left + 1), int(bottom - top + 1))
+
+def hand_to_img(meta_l):
+    global _network_w, _network_h, _scale
+    return meta_l.img.astype(np.float32), \
+           meta_l.get_heatmap(target_size=(_network_w // _scale, _network_h // _scale)).astype(np.float32), \
+           meta_l.get_part_mask()
